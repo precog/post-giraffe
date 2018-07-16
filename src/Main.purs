@@ -165,4 +165,4 @@ markedAsSpamProbability =
 
 main :: Effect Unit
 main =
-  void $ launchAff $ runProcess (p (MaxRows 10) $$ c)
+  void $ launchAff $ runProcess (p (MaxRows 1000) $$ c)
