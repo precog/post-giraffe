@@ -6,16 +6,17 @@ import Control.Coroutine (Consumer, Producer, await, emit, runProcess, ($$))
 import Control.Monad.Rec.Class (forever)
 import Control.Monad.Trans.Class (lift)
 import Data.Argonaut (Json, jsonEmptyObject, stringify, (:=), (~>))
-import Data.Array (length, (!!), (..))
-import Data.Int (toNumber)
+import Data.Array (length, (!!), (..), (:))
+import Data.Int (floor, toNumber)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Traversable (sum, traverse)
+import Data.Unfoldable (replicateA)
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Effect.Random (random, randomInt)
-import Math (pow)
+import Math (abs, pow)
 import Names (names)
 import UUID as UUID
 
@@ -64,13 +65,20 @@ newtype MaxRows = MaxRows Int
 
 newtype UnitInterval = UnitInterval Number
 
-normalRand :: Effect Number
+fromUI :: UnitInterval -> Number
+fromUI (UnitInterval ui) = ui
+
+normalRand :: Effect UnitInterval
 normalRand =
-  sum <$> (const random) `traverse` (1 .. 12)
+  UnitInterval <<< sum <$> (const random) `traverse` (1 .. 12)
 
 rescale :: MaxRows -> RowNumber -> UnitInterval
 rescale (MaxRows maxRows) (RowNumber rowNumber) =
   UnitInterval $ toNumber rowNumber / toNumber maxRows
+
+intScale :: Int -> Int -> UnitInterval -> Int
+intScale min max (UnitInterval ui) =
+  floor (ui * (toNumber max - toNumber min)) + min
 
 applyTrend :: UnitInterval -> Trend -> Number
 applyTrend (UnitInterval ui) trend =
@@ -82,12 +90,25 @@ inBounds (MaxRows maxRows) (RowNumber rowNumber) =
 
 calculate :: UnitInterval -> DeviatingTrend -> Effect Number
 calculate generationProgress trend =
-  (\r -> applyTrend generationProgress (trendToTrend trend) + r * (applyTrend generationProgress (deviationToTrend trend)))
+  (\(UnitInterval r) -> applyTrend generationProgress (trendToTrend trend) + r * (applyTrend generationProgress (deviationToTrend trend)))
     <$> normalRand
 
 email :: Effect String
 email =
   (_ <> "@example.com") <<< fromMaybe "" <<< (names !! _) <$> randomInt 0 (length names - 1)
+
+other' :: _
+other' =
+  "R" := 0
+
+other :: Array _
+other =
+  [ other'
+  , "UPD" := 0
+  , "DSLU" := 0
+  , "AFA" := 0
+  , "VFA" := 0
+  ]
 
 p :: MaxRows -> Producer Json Aff Unit
 p maxRows =
@@ -104,7 +125,7 @@ p maxRows =
         sId <- UUID.toString <$> UUID.make
         email' <- lift $ liftEffect email
         emit
-          $ if random' < markedAsSpamProbability'
+          $ if random' < (markedAsSpamProbability' / 2.0)
               then
                 id :=
                  ("dateTime" := datetime'
@@ -114,19 +135,24 @@ p maxRows =
                              ~> jsonEmptyObject)
                      ~> jsonEmptyObject)
                  ~> jsonEmptyObject
-              else
-                id :=
-                 ("dateTime" := datetime'
-                     ~> "S" :=
-                      ("rId" := rId
-                         ~> (if (generationProgress i) > (UnitInterval 0.15) then "to" := email' else "to" := [ email' ])
-                         ~> "cc" := ""
-                         ~> "bcc" := ""
-                         ~> "subject" := ""
-                         ~> "body" := ""
-                         ~> jsonEmptyObject)
-                     ~> jsonEmptyObject)
-                 ~> jsonEmptyObject
+              else if random' >= (markedAsSpamProbability' / 2.0) && random' < 0.5
+                then
+                  id :=
+                   ("dateTime" := datetime'
+                       ~> "S" :=
+                        ("rId" := rId
+                           ~> (if (generationProgress i) > (UnitInterval 0.15) then "to" := email' else "to" := [ email' ])
+                           ~> "cc" := ""
+                           ~> "bcc" := ""
+                           ~> "subject" := ""
+                           ~> "body" := ""
+                           ~> jsonEmptyObject)
+                       ~> jsonEmptyObject)
+                   ~> jsonEmptyObject
+                else
+                  id :=
+                    ("dateTime" := datetime' ~> (fromMaybe other' $ other !! (intScale 0 (length other - 1) $ UnitInterval ((random' - 0.5) * 2.0))) ~> jsonEmptyObject)
+                    ~> jsonEmptyObject
         go $ i + 1
       else pure unit
 
@@ -165,4 +191,4 @@ markedAsSpamProbability =
 
 main :: Effect Unit
 main =
-  void $ launchAff $ runProcess (p (MaxRows 1000) $$ c)
+  void $ launchAff $ runProcess (p (MaxRows 10000) $$ c)
