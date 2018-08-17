@@ -16,7 +16,7 @@ import Effect.Aff (Aff, launchAff)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Effect.Random (random, randomInt)
-import Math (abs, pow)
+import Math (abs, exp, pow)
 import Names (names)
 import UUID as UUID
 
@@ -99,15 +99,31 @@ email =
 
 other' :: _
 other' =
-  "R" := 0
+  "R" :=
+    ("email" := "example@example.com"
+       ~> "name" := "Example Example"
+       ~> jsonEmptyObject)
 
 other :: Array _
 other =
   [ other'
-  , "UPD" := 0
-  , "DSLU" := 0
-  , "AFA" := 0
-  , "VFA" := 0
+  , "UPD" :=
+      ("rId" := "examplea-8ea0-4151-99fc-6b25decba280"
+         ~> "token" := "ExamplevBiI2HlWgH4olfQ2"
+         ~> jsonEmptyObject)
+  , "DSLU" :=
+      ("rId" := "examplea-8ea0-4151-99fc-6b25decba280"
+         ~> "prev" := 0
+         ~> "today" := 200
+         ~> jsonEmptyObject)
+  , "AFA" :=
+      ("rId" := "examplea-8ea0-4151-99fc-6b25decba280"
+         ~> "address" := "example@example.com"
+         ~> jsonEmptyObject)
+  , "VFA" :=
+      ("rId" := "examplea-8ea0-4151-99fc-6b25decba280"
+         ~> "afaId" := "example2-17c5-4abf-90b7-81ff1831d079"
+         ~> jsonEmptyObject)
   ]
 
 p :: MaxRows -> Producer Json Aff Unit
@@ -169,26 +185,24 @@ c =
 
 datetime :: DeviatingTrend
 datetime =
-  { apply: y
+  { apply: \x -> 1.000471 - 1.000471* exp (-7.661191 * x)
   , min: 1518610203000.0
   , max: 1528061540000.0
-  , deviation: d
+  , deviation: \x -> 0.08784608 + 0.9121539 * exp (-4.318157 * x)
   , dMin: 10.0
   , dMax: 60000.0
   }
-  where
-  d x = -0.004290714 + (1.0 + 0.004290714) / (1.0 + (x / 0.3177867) `pow` 4.755252)
-  y x = 1.004291 + (1.582493e-17 - 1.004291)/(1.0 + (x/0.3177867) `pow` 4.755252)
 
 markedAsSpamProbability :: DeviatingTrend
 markedAsSpamProbability =
-  datetime
-    { min = 0.1
-    , max = 0.2
-    , dMin = 0.0001
-    , dMax = 0.01
-    }
+  { apply: \x -> 1.004291 + (1.582493e-17 - 1.004291)/(1.0 + (x/0.3177867) `pow` 4.755252)
+  , min: 0.1
+  , max: 0.2
+  , deviation: const 0.00001
+  , dMin: 0.0001
+  , dMax: 0.01
+  }
 
 main :: Effect Unit
 main =
-  void $ launchAff $ runProcess (p (MaxRows 10000) $$ c)
+  void $ launchAff $ runProcess (p (MaxRows 5000) $$ c)
