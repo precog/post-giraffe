@@ -59,9 +59,9 @@ type DeviatingTrend =
   , dMax :: Number
   }
 
-newtype RowNumber = RowNumber Int
+newtype RowNumber = RowNumber Number
 
-newtype MaxRows = MaxRows Int
+newtype MaxRows = MaxRows Number
 
 newtype UnitInterval = UnitInterval Number
 
@@ -74,7 +74,7 @@ normalRand =
 
 rescale :: MaxRows -> RowNumber -> UnitInterval
 rescale (MaxRows maxRows) (RowNumber rowNumber) =
-  UnitInterval $ toNumber rowNumber / toNumber maxRows
+  UnitInterval $ rowNumber / maxRows
 
 intScale :: Int -> Int -> UnitInterval -> Int
 intScale min max (UnitInterval ui) =
@@ -126,21 +126,21 @@ other =
          ~> jsonEmptyObject)
   ]
 
-p :: MaxRows -> Producer Json Aff Unit
+p :: MaxRows -> Aff Unit
 p maxRows =
-  go 0
+  go 0.0
   where
   go i =
     if inBounds maxRows (RowNumber i)
       then do
         datetime' <- calculate' i datetime
         markedAsSpamProbability' <- calculate' i markedAsSpamProbability
-        random' <- lift $ liftEffect $ random
+        random' <- liftEffect $ random
         id <- UUID.toString <$> UUID.make
         rId <- UUID.toString <$> UUID.make
         sId <- UUID.toString <$> UUID.make
-        email' <- lift $ liftEffect email
-        emit
+        email' <- liftEffect email
+        liftEffect $ log $ stringify
           $ if random' < (markedAsSpamProbability' / 2.0)
               then
                 id :=
@@ -169,19 +169,14 @@ p maxRows =
                   id :=
                     ("dateTime" := datetime' ~> (fromMaybe other' $ other !! (intScale 0 (length other - 1) $ UnitInterval ((random' - 0.5) * 2.0))) ~> jsonEmptyObject)
                     ~> jsonEmptyObject
-        go $ i + 1
+        go $ i + 1.0
       else pure unit
 
   calculate' i =
-    lift <<< liftEffect <<< calculate (generationProgress i)
+    liftEffect <<< calculate (generationProgress i)
 
   generationProgress i =
     rescale maxRows $ RowNumber i
-
-c :: Consumer Json Aff Unit
-c =
-  forever
-    $ (await >>= stringify >>> log >>> liftEffect >>> lift) $> Nothing
 
 datetime :: DeviatingTrend
 datetime =
@@ -205,4 +200,4 @@ markedAsSpamProbability =
 
 main :: Effect Unit
 main =
-  void $ launchAff $ runProcess (p (MaxRows 5000) $$ c)
+  void $ launchAff $ p (MaxRows 28783026905.0)
