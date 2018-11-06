@@ -3,7 +3,7 @@ module Main where
 import Prelude
 
 import Control.Coroutine (Consumer, Producer, await, emit, runProcess, ($$))
-import Control.Monad.Rec.Class (forever)
+import Control.Monad.Rec.Class (Step(..), forever, tailRec, tailRecM)
 import Control.Monad.Trans.Class (lift)
 import Data.Argonaut (Json, jsonEmptyObject, stringify, (:=), (~>))
 import Data.Array (length, (!!), (..), (:))
@@ -13,7 +13,6 @@ import Data.Traversable (sum, traverse)
 import Data.Unfoldable (replicateA)
 import Effect (Effect)
 import Effect.Aff (Aff, launchAff)
-import Effect.Class (liftEffect)
 import Effect.Console (log)
 import Effect.Random (random, randomInt)
 import Math (abs, exp, pow)
@@ -126,21 +125,21 @@ other =
          ~> jsonEmptyObject)
   ]
 
-p :: MaxRows -> Aff Unit
+p :: MaxRows -> Effect Unit
 p maxRows =
-  go 0.0
+  tailRecM go 0.0
   where
   go i =
     if inBounds maxRows (RowNumber i)
       then do
         datetime' <- calculate' i datetime
         markedAsSpamProbability' <- calculate' i markedAsSpamProbability
-        random' <- liftEffect $ random
+        random' <- random
         id <- UUID.toString <$> UUID.make
         rId <- UUID.toString <$> UUID.make
         sId <- UUID.toString <$> UUID.make
-        email' <- liftEffect email
-        liftEffect $ log $ stringify
+        email' <- email
+        log $ stringify
           $ if random' < (markedAsSpamProbability' / 2.0)
               then
                 id :=
@@ -169,11 +168,11 @@ p maxRows =
                   id :=
                     ("dateTime" := datetime' ~> (fromMaybe other' $ other !! (intScale 0 (length other - 1) $ UnitInterval ((random' - 0.5) * 2.0))) ~> jsonEmptyObject)
                     ~> jsonEmptyObject
-        go $ i + 1.0
-      else pure unit
+        pure $ Loop $ i + 1.0
+      else pure $ Done unit
 
   calculate' i =
-    liftEffect <<< calculate (generationProgress i)
+    calculate (generationProgress i)
 
   generationProgress i =
     rescale maxRows $ RowNumber i
@@ -200,4 +199,4 @@ markedAsSpamProbability =
 
 main :: Effect Unit
 main =
-  void $ launchAff $ p (MaxRows 28783026905.0)
+  void $ p (MaxRows 28783026905.0)
