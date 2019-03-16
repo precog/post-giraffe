@@ -19,6 +19,8 @@ import Math (abs, exp, pow)
 import Names (names)
 import UUID as UUID
 
+foreign import forE :: Number -> Number -> (Number -> Effect Unit) -> Effect Unit
+
 type Trend =
   { apply :: Number -> Number
   , min :: Number
@@ -126,56 +128,52 @@ other =
   ]
 
 p :: MaxRows -> Effect Unit
-p maxRows =
-  tailRecM go 0.0
+p (MaxRows maxRows) =
+  forE 0.0 (maxRows - 1.0) go
   where
-  go i =
-    if inBounds maxRows (RowNumber i)
-      then do
-        datetime' <- calculate' i datetime
-        markedAsSpamProbability' <- calculate' i markedAsSpamProbability
-        random' <- random
-        id <- UUID.toString <$> UUID.make
-        rId <- UUID.toString <$> UUID.make
-        sId <- UUID.toString <$> UUID.make
-        email' <- email
-        log $ stringify
-          $ if random' < (markedAsSpamProbability' / 2.0)
-              then
-                id :=
-                 ("dateTime" := datetime'
-                     ~> "MAS" :=
-                          ("rId" := rId
-                             ~> "sId" := sId
-                             ~> jsonEmptyObject)
-                     ~> jsonEmptyObject)
-                 ~> jsonEmptyObject
-              else if random' >= (markedAsSpamProbability' / 2.0) && random' < 0.5
-                then
-                  id :=
-                   ("dateTime" := datetime'
-                       ~> "S" :=
-                        ("rId" := rId
-                           ~> (if (generationProgress i) > (UnitInterval 0.15) then "to" := email' else "to" := [ email' ])
-                           ~> "cc" := ""
-                           ~> "bcc" := ""
-                           ~> "subject" := ""
-                           ~> "body" := ""
-                           ~> jsonEmptyObject)
+  go i = do
+    datetime' <- calculate' i datetime
+    markedAsSpamProbability' <- calculate' i markedAsSpamProbability
+    random' <- random
+    id <- UUID.toString <$> UUID.make
+    rId <- UUID.toString <$> UUID.make
+    sId <- UUID.toString <$> UUID.make
+    email' <- email
+    log $ stringify
+      $ if random' < (markedAsSpamProbability' / 2.0)
+          then
+            id :=
+             ("dateTime" := datetime'
+                 ~> "MAS" :=
+                      ("rId" := rId
+                         ~> "sId" := sId
+                         ~> jsonEmptyObject)
+                 ~> jsonEmptyObject)
+             ~> jsonEmptyObject
+          else if random' >= (markedAsSpamProbability' / 2.0) && random' < 0.5
+            then
+              id :=
+               ("dateTime" := datetime'
+                   ~> "S" :=
+                    ("rId" := rId
+                       ~> (if (generationProgress i) > (UnitInterval 0.15) then "to" := email' else "to" := [ email' ])
+                       ~> "cc" := ""
+                       ~> "bcc" := ""
+                       ~> "subject" := ""
+                       ~> "body" := ""
                        ~> jsonEmptyObject)
-                   ~> jsonEmptyObject
-                else
-                  id :=
-                    ("dateTime" := datetime' ~> (fromMaybe other' $ other !! (intScale 0 (length other - 1) $ UnitInterval ((random' - 0.5) * 2.0))) ~> jsonEmptyObject)
-                    ~> jsonEmptyObject
-        pure $ Loop $ i + 1.0
-      else pure $ Done unit
+                   ~> jsonEmptyObject)
+               ~> jsonEmptyObject
+            else
+              id :=
+                ("dateTime" := datetime' ~> (fromMaybe other' $ other !! (intScale 0 (length other - 1) $ UnitInterval ((random' - 0.5) * 2.0))) ~> jsonEmptyObject)
+                ~> jsonEmptyObject
 
   calculate' i =
     calculate (generationProgress i)
 
   generationProgress i =
-    rescale maxRows $ RowNumber i
+    rescale (MaxRows maxRows) $ RowNumber i
 
 datetime :: DeviatingTrend
 datetime =
